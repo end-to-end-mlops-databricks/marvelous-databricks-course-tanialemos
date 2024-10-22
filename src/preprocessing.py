@@ -1,6 +1,4 @@
 from pyspark.sql import functions as F
-from pyspark.sql.functions import col
-import pandas as pd
 
 
 def load_data(spark, filepath):
@@ -32,9 +30,9 @@ def clean_and_preprocess_data(df):
     # TODO fill na
     # TODO encode cat vars
 
-    df = df.withColumn("target", 
-                            F.when(df.booking_status == "Not_Canceled", 0)
-                            .when(df.booking_status == "Canceled", 1))
+    df = df.withColumn(
+        "target", F.when(df.booking_status == "Not_Canceled", 0).when(df.booking_status == "Canceled", 1)
+    )
 
     cleaned_df = df.drop("Booking_ID", "booking_status")
 
@@ -45,9 +43,7 @@ def clean_and_preprocess_data(df):
 
 
 def load_and_preprocess(spark, filepath):
-
     df = load_data(spark, filepath)
     df = clean_and_preprocess_data(df)
 
     return df
-
