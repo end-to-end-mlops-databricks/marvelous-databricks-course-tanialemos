@@ -1,3 +1,4 @@
+from databricks.connect import DatabricksSession
 from src import preprocessing
 import yaml
 
@@ -8,11 +9,13 @@ with open("project_config.yml", "r") as file:
 print("Configuration loaded:")
 print(yaml.dump(config, default_flow_style=False))
 
-# Simple data load
-local_filepath = "data\\hotel-reservations.csv"
+# Build Databricks session
+spark = DatabricksSession.builder.profile("dbc-643c4c2b-d6c9").getOrCreate() # databrickscfg profile host and cluster must match workspace
+
+# Simple data load and preprocessing
 db_filepath = "/Volumes/mlops_students/tanialemosribeiro/data/hotel-reservations.csv"
 
-preprocessing.load_local_data(local_filepath)
+df = preprocessing.load_and_preprocess(spark, db_filepath)
 
-preprocessing.load_vol_data(db_filepath)
+df.show(5)
 
