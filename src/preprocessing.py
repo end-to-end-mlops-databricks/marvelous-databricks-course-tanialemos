@@ -1,49 +1,82 @@
-from pyspark.sql import functions as F
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
+
+from . import logger
+
+log = logger.Logger(__name__)
 
 
 def load_data(spark, filepath):
-    print("--- Start data loading ---")
+    log.info("Data loading...")
 
     try:
         df = spark.read.csv(filepath, header=True)
     except Exception as e:
-        print(f"Yikes! An error ocurred: {e}")
+        log.error(e)
 
-    print(f"Databricks df shape: {(df.count(), len(df.columns))}")
-    print("--- Finhished data loading ---")
+    log.info(f"Databricks df shape: {(df.count(), len(df.columns))}")
 
     return df
 
 
-def clean_and_preprocess_data(df):
-    print("--- Start data cleaning and preprocessing ---")
+def clean_and_preprocess_data(df, config):
+    log.info("Data cleaning and preprocessing...")
 
-    print("--- Print schema ---")
+    log.info("Print schema")
     df.printSchema()
 
-    print("---  Check unique Booking Status values ---")
+    log.info("Check unique Booking Status values")
     df.select("booking_status").distinct().show()
 
     df = df.dropDuplicates()
-    print(f"DF shape after dropDuplicates: {(df.count(), len(df.columns))}")
+    log.info(f"DF shape after dropDuplicates: {(df.count(), len(df.columns))}")
 
-    # TODO fill na
-    # TODO encode cat vars
+    # Select specified features and target
+    df_features = df.select(config["num_features"] + config["cat_features"]).toPandas()
+    target = df.select(config["target"]).toPandas()
 
-    df = df.withColumn(
-        "target", F.when(df.booking_status == "Not_Canceled", 0).when(df.booking_status == "Canceled", 1)
+    # Create preprocessing steps
+    numeric_transformer = Pipeline(steps=[("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())])
+
+    categorical_transformer = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="constant", fill_value="missing")),
+            ("onehot", OneHotEncoder(handle_unknown="ignore")),
+        ]
     )
 
-    cleaned_df = df.drop("Booking_ID", "booking_status")
+    # Combine preprocessing steps
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", numeric_transformer, config["num_features"]),
+            ("cat", categorical_transformer, config["cat_features"]),
+        ]
+    )
 
-    print(f"DF shape after clean and preprocess: {(cleaned_df.count(), len(cleaned_df.columns))}")
-    print("--- Finished data cleaning and preprocessing ---")
+    log.info("Transform pipeline...")
+    X = preprocessor.fit_transform(df_features)
 
-    return cleaned_df
+    # Preprocess target variable
+    target_encoder = LabelEncoder()
+    y = target_encoder.fit_transform(target)
+
+    log.info(f"X-array shape: {X.shape}")
+    log.info("Finished data cleaning and preprocessing")
+
+    return X, y
 
 
-def load_and_preprocess(spark, filepath):
+def split_data(X, y, test_size=0.2, random_state=42):
+    log.info("Split data...")
+    return train_test_split(X, y, test_size=test_size, random_state=random_state, stratify=y)
+
+
+def load_and_preprocess(spark, filepath, config):
     df = load_data(spark, filepath)
-    df = clean_and_preprocess_data(df)
+    X, y = clean_and_preprocess_data(df, config)
+    X_train, X_test, y_train, y_test = split_data(X, y)
 
-    return df
+    return X_train, X_test, y_train, y_test
