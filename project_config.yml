@@ -22,3 +22,5 @@ cat_features:
   - market_segment_type
 
 target: booking_status
+
+test_size: 0.2
