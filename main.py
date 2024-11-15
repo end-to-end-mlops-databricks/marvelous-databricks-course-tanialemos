@@ -1,7 +1,6 @@
 import yaml
 from databricks.connect import DatabricksSession
 
-from src import preprocessing
 from src import logger, preprocessing
 
 log = logger.Logger(__name__)
