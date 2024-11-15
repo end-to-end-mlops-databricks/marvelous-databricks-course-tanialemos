@@ -4,7 +4,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import pandas as pd
 import re
 
@@ -13,8 +13,27 @@ from . import logger
 logger = logger.Logger(__name__)
 
 class Preprocessor:
+    """
+    A class to preprocess and transform data using PySpark and Scikit-learn pipelines.
+    
+    Attributes:
+        - config (dict): Configuration dictionary with the necessary parameters for preprocessing.
+        - sparksession (SparkSession): A Spark session object to work with Spark DataFrames.
+        - filepath (str): Path to the input data file.
+        - logger (Logger): Logger instance to log relevant information during preprocessing.
+        - raw_df (DataFrame): Raw Spark DataFrame loaded from the file.
+        - preprocessed_df (pd.DataFrame): Processed Pandas DataFrame after transformations.
+    """
 
     def __init__(self, config: dict, spark: SparkSession, filepath: str) -> None:
+        """
+        Initialize the Preprocessor class with configuration, Spark session, and file path.
+        
+        Args:
+            - config (dict): Configuration dictionary with features and target settings.
+            - spark (SparkSession): Spark session to interact with the Spark cluster.
+            - filepath (str): Path to the input data file.
+        """
         self.config: dict = config
         self.sparksession: SparkSession = spark
         self.filepath: str = filepath
@@ -24,6 +43,15 @@ class Preprocessor:
 
 
     def __load_data(self) -> DataFrame:
+        """
+        Load the data from the specified filepath into a Spark DataFrame.
+        
+        This method reads a CSV file and logs relevant information such as the DataFrame shape 
+        and column names.
+        
+        Returns:
+            - DataFrame: The raw Spark DataFrame loaded from the file.
+        """
         self.logger.info("Data loading...")
 
         try:
@@ -37,6 +65,18 @@ class Preprocessor:
 
 
     def __clean_and_preprocess_data(self) -> pd.DataFrame:
+        """
+        Clean and preprocess the raw data.
+        
+        This method includes:
+            - Dropping duplicates
+            - Selecting relevant features and target
+            - Applying preprocessing steps (imputation, scaling, encoding)
+            - Cleaning column names (removing prefixes and invalid characters)
+        
+        Returns:
+            - pd.DataFrame: The preprocessed Pandas DataFrame.
+        """
         self.logger.info("Data cleaning and preprocessing...")
 
         self.logger.info("Print schema")
@@ -90,6 +130,12 @@ class Preprocessor:
 
 
     def __split_data(self) -> list:
+        """
+        Split the preprocessed data into training and testing sets.
+        
+        Returns:
+            - list: A list containing the train and test sets.
+        """
         self.logger.info("Spliting data...")
         test_size = self.config["test_size"]
         target = self.config["target"]
@@ -97,7 +143,20 @@ class Preprocessor:
     
 
     def __save_to_catalog(self, train_set: pd.DataFrame, test_set: pd.DataFrame) -> None:
+        """
+        Save the train and test sets to Unity Catalog in Databricks.
+        
+        This method writes the processed train and test sets to the corresponding Delta tables and sets the 
+        required table properties for change data feed.
+        
+        Args:
+            - train_set (pd.DataFrame): The preprocessed training data.
+            - test_set (pd.DataFrame): The preprocessed testing data.
+        """
         self.logger.info("Saving train and test sets to Catalog...")
+
+        train_table_path = f"{self.config['catalog_name']}.{self.config['schema_name']}.train_set"
+        test_table_path = f"{self.config['catalog_name']}.{self.config['schema_name']}.test_set"
 
         # Create spark df and add timestamp column to mimic data ingestion in the future
         train_set_with_timestamp = self.sparksession.createDataFrame(train_set).withColumn(
@@ -106,21 +165,23 @@ class Preprocessor:
         test_set_with_timestamp = self.sparksession.createDataFrame(test_set).withColumn(
             "update_timestamp_utc", to_utc_timestamp(current_timestamp(), "UTC"))
 
-        train_set_with_timestamp.write.mode("append").saveAsTable(
-            f"{self.config['catalog_name']}.{self.config['schema_name']}.train_set")
+        train_set_with_timestamp.write.mode("append").saveAsTable(train_table_path)
         
-        test_set_with_timestamp.write.mode("append").saveAsTable(
-            f"{self.config['catalog_name']}.{self.config['schema_name']}.test_set")
+        test_set_with_timestamp.write.mode("append").saveAsTable(test_table_path)
 
-        self.sparksession.sql(f"ALTER TABLE {self.config['catalog_name']}.{self.config['schema_name']}.train_set "
-          "SET TBLPROPERTIES (delta.enableChangeDataFeed = true);")
+        self.sparksession.sql(f"ALTER TABLE {train_table_path} SET TBLPROPERTIES (delta.enableChangeDataFeed = true);")
         
-        self.sparksession.sql(f"ALTER TABLE {self.config['catalog_name']}.{self.config['schema_name']}.test_set "
-          "SET TBLPROPERTIES (delta.enableChangeDataFeed = true);")
+        self.sparksession.sql(f"ALTER TABLE {test_table_path} SET TBLPROPERTIES (delta.enableChangeDataFeed = true);")
 
 
 
     def preprocess_and_save_data(self)-> None:
+        """
+        Method to preprocess and save the data.
+        
+        This method loads the data, cleans and preprocesses it, splits it into train and 
+        test sets, and finally saves the datasets to Unity Catalog.
+        """
         self.__load_data()
         self.__clean_and_preprocess_data()
         train_set, test_set = self.__split_data()        
