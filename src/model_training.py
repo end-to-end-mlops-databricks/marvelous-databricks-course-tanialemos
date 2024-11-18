@@ -25,6 +25,9 @@ class ModelTraining:
         self.test_table_path: str = f"{self.config['catalog_name']}.{self.config['schema_name']}.test_set"
 
     def __get_repo_info(self) -> dict:
+        """
+        Retrieve repository information like the current Git SHA and branch.
+        """
         repo_info: dict = {}
         repo = git.Repo(search_parent_directories=True)
         repo_info["git_sha"] = repo.head.object.hexsha
@@ -32,7 +35,9 @@ class ModelTraining:
         return repo_info
 
     def __load_and_split_data(self) -> None:
-        # Load training and testing sets from Databricks tables
+        """
+        Load training and testing sets from Databricks tables and further split into training variables and target.
+        """
 
         logger.info("Start data loading from Unity Catalog...")
         self.train_set_spark = self.sparksession.table(self.train_table_path)
@@ -49,6 +54,22 @@ class ModelTraining:
         self.y_test = test_set[self.config["target"]]
 
     def train_and_log_model(self) -> None:
+        """
+        Train logistic regression models with different solvers and log results to MLflow.
+
+        This method performs the following steps:
+        1. Loads and splits the training and testing datasets from the configured sources.
+        2. Retrieves repository information (Git SHA and branch) for reproducibility.
+        3. Iterates through a predefined list of solvers to train logistic regression models.
+        4. For each solver:
+        - Trains a model using the specified solver and hyperparameters.
+        - Evaluates the model using accuracy, precision, and recall metrics.
+        - Logs hyperparameters, metrics, and the model artifact to MLflow.
+        - Records the dataset version and structure using MLflow's input logging.
+
+        Raises:
+            Exception: Captures and logs any errors encountered during model training or logging.
+        """
         self.__load_and_split_data()
 
         repo_info = self.__get_repo_info()
