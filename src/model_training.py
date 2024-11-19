@@ -133,3 +133,40 @@ class ModelTraining:
                     # Log failure for the current solver
                     mlflow.log_param("error", str(e))
                     logger.error(f"Solver {solver} failed with error: {e}")
+
+    def register_model(self, run_id: str, artifact_path: str) -> None:
+        """
+        Registers a selected model to the Databricks Unity Catalog.
+
+        This method sets up tracking and registry URIs to Databricks, searches for a specific run by its ID within a given experiment,
+        and registers the corresponding model to the Unity Catalog.
+
+        Args:
+            run_id (str): The unique identifier of the MLflow run containing the model to register.
+            artifact_path (str): The path to the model artifact within the run to be registered.
+
+        Behavior:
+            - The tracking URI is set to "databricks".
+            - The registry URI is set to "databricks-uc" for Unity Catalog registration.
+            - Searches for the run specified by `run_id` within the experiment "/Shared/hotel-cancels".
+            - Registers the model artifact found at the specified path with a fully qualified name constructed using catalog and schema names.
+            - Applies a placeholder Git SHA tag to the registered model (to be refactored in the future).
+
+        Note:
+            The catalog and schema names used in the model's name are retrieved from the `config` attribute of the containing object.
+        """
+
+        mlflow.set_tracking_uri("databricks")
+        mlflow.set_registry_uri("databricks-uc")  # It must be -uc for registering models to Unity Catalog
+
+        # registering hard-coded run_id doesn't seem to work.
+        # Need to fecth run_info for experiment.
+        runs = mlflow.search_runs(experiment_names=["/Shared/hotel-cancels"], output_format="list")
+        for run in runs:
+            info_run_id = run.info.run_id
+            if info_run_id == run_id:
+                mlflow.register_model(
+                    model_uri=f"runs:/{info_run_id}/{artifact_path}",
+                    name=f"{self.config['catalog_name']}.{self.config['schema_name']}.hotel_cancels_model",
+                    tags={"git_sha": "3fd5e5c7d10cf8f4e4964b6252a71640b3ce317f"},  # to be refactored
+                )
