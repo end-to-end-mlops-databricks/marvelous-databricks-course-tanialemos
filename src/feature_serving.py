@@ -2,6 +2,10 @@ import mlflow
 import pandas as pd
 from databricks import feature_engineering
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.catalog import (
+    OnlineTableSpec,
+    OnlineTableSpecTriggeredSchedulingPolicy,
+)
 from pyspark.sql import SparkSession
 
 from . import logger
@@ -63,3 +67,17 @@ class FeatureServing:
             ALTER TABLE {self.feature_table_name}
             SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
         """)
+
+    def __create_online_feature_table(self) -> None:
+        """
+        Creates an online feature table based on the offline feature table
+        """
+        spec = OnlineTableSpec(
+            primary_key_columns=["id"],
+            source_table_full_name=self.feature_table_name,
+            run_triggered=OnlineTableSpecTriggeredSchedulingPolicy.from_dict({"triggered": "true"}),
+            perform_full_copy=False,
+        )
+
+        # Create the online table in Databricks
+        self.workspace.online_tables.create(name=self.online_table_name, spec=spec)
