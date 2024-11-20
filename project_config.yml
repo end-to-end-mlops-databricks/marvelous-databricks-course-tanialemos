@@ -1,6 +1,7 @@
 catalog_name: mlops_students
 schema_name: tanialemosribeiro
 
+# preprocessing and model training
 num_features:
   - no_of_adults
   - no_of_children
@@ -24,3 +25,12 @@ cat_features:
 target: booking_status
 
 test_size: 0.2
+
+# model serving
+lookup_features:
+  - "no_of_adults"
+  - "no_of_children"
+  - "repeated_guest"
+  - "no_of_previous_cancellations"
+
+prediction: predicted_cancel

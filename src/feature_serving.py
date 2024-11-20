@@ -22,9 +22,10 @@ class FeatureServing:
         # Get feature columns details
         self.num_features = config["num_features"]
         self.cat_features = config["cat_features"]
-        self.target = config["target"]
         self.catalog_name = config["catalog_name"]
         self.schema_name = config["schema_name"]
+        self.lookup_features = config["lookup_features"]
+        self.prediction = config["prediction"]
 
         # Define table names
         self.feature_table_name = f"{self.catalog_name}.{self.schema_name}.hotel_cancels_preds"
@@ -43,14 +44,21 @@ class FeatureServing:
         mlflow.set_registry_uri("databricks-uc")
 
     def __create_feature_table(self) -> None:
+        """
+        Creates an offline feature table in Databricks.
+
+        - Loads an MLflow model from Databricks UC to generate predictions.
+        - Generates predictions for existing full dataset.
+        - Saves selected features and predictions as a Delta table.
+        - Enables Change Data Feed for the table.
+        """
+        logger.info("Start creating offline feature table...")
         # Load the MLflow model for predictions
         model = mlflow.sklearn.load_model(f"models:/{self.catalog_name}.{self.schema_name}.hotel_cancels")
 
         # select features to be served, add predictions columns and ids
-        preds_df: pd.DataFrame = self.df[
-            ["no_of_adults", "no_of_children", "repeated_guest", "no_of_previous_cancellations"]
-        ]
-        preds_df["predicted_cancel"] = model.predict(self.df)
+        preds_df: pd.DataFrame = self.df[self.lookup_features]
+        preds_df[self.prediction] = model.predict(self.df)
         preds_df["id"] = range(1, len(preds_df) + 1)
 
         preds_df = self.spark.createDataFrame(preds_df)
@@ -68,11 +76,13 @@ class FeatureServing:
             ALTER TABLE {self.feature_table_name}
             SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
         """)
+        logger.info("Offline feature table created")
 
     def __create_online_feature_table(self) -> None:
         """
         Creates an online feature table based on the offline feature table
         """
+        logger.info("Start creating online feature table...")
         spec = OnlineTableSpec(
             primary_key_columns=["id"],
             source_table_full_name=self.feature_table_name,
@@ -82,20 +92,19 @@ class FeatureServing:
 
         # Create the online table in Databricks
         self.workspace.online_tables.create(name=self.online_table_name, spec=spec)
+        logger.info("Online feature table created")
 
-    def __create_serving_point(self) -> None:
+    def __create_serving_endpoint(self) -> None:
+        """
+        Creates a feature-serving endpoint for real-time predictions.
+        """
+        logger.info("Start creating serving endpoint...")
         # Define features to look up from the feature table
         features = [
             feature_engineering.FeatureLookup(
                 table_name=self.feature_table_name,
                 lookup_key="id",
-                feature_names=[
-                    "no_of_adults",
-                    "no_of_children",
-                    "repeated_guest",
-                    "no_of_previous_cancellations",
-                    "predicted_cancel",
-                ],
+                feature_names=[self.lookup_features + self.prediction],
             )
         ]
 
@@ -116,8 +125,12 @@ class FeatureServing:
                 ]
             ),
         )
+        logger.info("Serving endpoint created")
 
     def deploy_feature_serving_endpoint(self) -> None:
+        """
+        Deploys the feature-serving endpoint.
+        """
         self.__create_feature_table()
         self.__create_online_feature_table()
-        self.__create_serving_point()
+        self.__create_serving_endpoint()
