@@ -1,7 +1,7 @@
 import yaml
 from databricks.connect import DatabricksSession
 
-from src import logger, model_training, preprocessing
+from src import feature_serving, logger
 
 log = logger.Logger(__name__)
 
@@ -26,7 +26,7 @@ except Exception as e:
 
 log.info("Databricks session loaded.")
 
-
+"""
 # Data load and preprocessing
 log.info("Start data preprocessing...")
 db_filepath = "/Volumes/mlops_students/tanialemosribeiro/data/hotel-reservations.csv"
@@ -49,3 +49,11 @@ model_training = model_training.ModelTraining(config, spark)
 model_training.register_model("eae6c929409544788c337eeea5d2b3c1", "lr-hotel-cancels-lbfgs")  # hard-coded for now
 
 log.info("Model registration finished")
+"""
+# Deploy feature serving endpoint
+log.info("Start deploying feature serving endpoint...")
+
+feature_serving = feature_serving.FeatureServing(config, spark)
+feature_serving.deploy_feature_serving_endpoint()
+
+log.info("Deployment finished")
