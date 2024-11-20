@@ -6,6 +6,7 @@ from databricks.sdk.service.catalog import (
     OnlineTableSpec,
     OnlineTableSpecTriggeredSchedulingPolicy,
 )
+from databricks.sdk.service.serving import EndpointCoreConfigInput, ServedEntityInput
 from pyspark.sql import SparkSession
 
 from . import logger
@@ -81,3 +82,42 @@ class FeatureServing:
 
         # Create the online table in Databricks
         self.workspace.online_tables.create(name=self.online_table_name, spec=spec)
+
+    def __create_serving_point(self) -> None:
+        # Define features to look up from the feature table
+        features = [
+            feature_engineering.FeatureLookup(
+                table_name=self.feature_table_name,
+                lookup_key="id",
+                feature_names=[
+                    "no_of_adults",
+                    "no_of_children",
+                    "repeated_guest",
+                    "no_of_previous_cancellations",
+                    "predicted_cancel",
+                ],
+            )
+        ]
+
+        # Create the feature spec for serving
+        feature_spec_name = f"{self.catalog_name}.{self.schema_name}.return_predictions"
+        self.fe.create_feature_spec(name=feature_spec_name, features=features, exclude_columns=None)
+
+        # Create a serving endpoint for the house prices predictions
+        self.workspace.serving_endpoints.create(
+            name="hotel-cancels-feature-serving",
+            config=EndpointCoreConfigInput(
+                served_entities=[
+                    ServedEntityInput(
+                        entity_name=feature_spec_name,  # feature spec name defined in the previous step
+                        scale_to_zero_enabled=True,
+                        workload_size="Small",  # Define the workload size (Small, Medium, Large)
+                    )
+                ]
+            ),
+        )
+
+    def deploy_feature_serving_endpoint(self) -> None:
+        self.__create_feature_table()
+        self.__create_online_feature_table()
+        self.__create_serving_point()
