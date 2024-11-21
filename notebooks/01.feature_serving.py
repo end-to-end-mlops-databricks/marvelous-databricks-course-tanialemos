@@ -1,5 +1,7 @@
 # Databricks notebook source
-# MAGIC %pip install ../mlops_with_databricks-0.0.1-py3-none-any.whl
+
+# Either install wheel on notebook and run the following 2 cells. Otherwise install wheel on cluster.
+# MAGIC %pip install mlops_with_databricks-0.0.1-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -20,9 +22,7 @@ The source Delta table and the online table must use the same primary key.
 
 """
 
-import random
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import mlflow
 import pandas as pd
@@ -31,6 +31,7 @@ import yaml
 from databricks import feature_engineering
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.catalog import (
+    OnlineTable,
     OnlineTableSpec,
     OnlineTableSpecTriggeredSchedulingPolicy,
 )
@@ -56,7 +57,7 @@ mlflow.set_registry_uri("databricks-uc")
 # COMMAND ----------
 
 # Load config
-with open("project_config.yml", "r") as file:
+with open("../project_config.yml", "r") as file:
     config = yaml.safe_load(file)
 
 # Get feature columns details
@@ -74,7 +75,9 @@ online_table_name = f"{catalog_name}.{schema_name}.hotel_cancels_preds_online"
 # Load training and test sets from Catalog
 train_set = spark.table(f"{catalog_name}.{schema_name}.train_set").toPandas()
 test_set = spark.table(f"{catalog_name}.{schema_name}.test_set").toPandas()
-
+cols_to_drop = ["booking_status", "update_timestamp_utc"]
+train_set = train_set.drop(columns=cols_to_drop)
+test_set = test_set.drop(columns=cols_to_drop)
 df = pd.concat([train_set, test_set])
 
 # COMMAND ----------
@@ -114,14 +117,16 @@ spark.sql(f"""
 # Create the online table using feature table
 
 spec = OnlineTableSpec(
-    primary_key_columns=["Id"],
+    primary_key_columns=["id"],
     source_table_full_name=feature_table_name,
     run_triggered=OnlineTableSpecTriggeredSchedulingPolicy.from_dict({"triggered": "true"}),
     perform_full_copy=False,
 )
 
+online_table = OnlineTable(name=online_table_name, spec=spec)
+
 # Create the online table in Databricks
-online_table_pipeline = workspace.online_tables.create(name=online_table_name, spec=spec)
+online_table_pipeline = workspace.online_tables.create(table=online_table)
 
 # COMMAND ----------
 # Create feture look up and feature spec table feature table
@@ -131,7 +136,7 @@ features = [
     feature_engineering.FeatureLookup(
         table_name=feature_table_name,
         lookup_key="id",
-        feature_names=[lookup_features + prediction],
+        feature_names=[lookup_features + [prediction]],
     )
 ]
 # Create the feature spec for serving
@@ -148,6 +153,7 @@ fe.create_feature_spec(name=feature_spec_name, features=features, exclude_column
 # Create endpoing using feature spec
 
 # Create a serving endpoint for the house prices predictions
+# note: it takes some time to create the endpoint
 workspace.serving_endpoints.create(
     name="hotel-cancels-feature-serving",
     config=EndpointCoreConfigInput(
@@ -176,7 +182,7 @@ host = spark.conf.get("spark.databricks.workspaceUrl")
 
 # COMMAND ----------
 
-id_list = preds_df["Id"]
+id_list = preds_df["id"]
 
 # COMMAND ----------
 
@@ -187,7 +193,7 @@ serving_endpoint = f"https://{host}/serving-endpoints/hotel-cancels-feature-serv
 response = requests.post(
     f"{serving_endpoint}",
     headers={"Authorization": f"Bearer {token}"},
-    json={"dataframe_records": [{"Id": "55"}]},
+    json={"dataframe_records": [{"id": "55"}]},
 )
 
 end_time = time.time()
@@ -196,59 +202,3 @@ execution_time = end_time - start_time
 print("Response status:", response.status_code)
 print("Reponse text:", response.text)
 print("Execution time:", execution_time, "seconds")
-
-
-# COMMAND ----------
-# another way to call the endpoint
-
-response = requests.post(
-    f"{serving_endpoint}",
-    headers={"Authorization": f"Bearer {token}"},
-    json={"dataframe_split": {"columns": ["Id"], "data": [["55"]]}},
-)
-
-# MAGIC %md
-# MAGIC ## Load Test
-
-# COMMAND ----------
-# Initialize variables
-serving_endpoint = f"https://{host}/serving-endpoints/hotel-cancels-feature-serving/invocations"
-id_list = preds_df.select("Id").rdd.flatMap(lambda x: x).collect()
-headers = {"Authorization": f"Bearer {token}"}
-num_requests = 10
-
-
-# Function to make a request and record latency
-def send_request():
-    random_id = random.choice(id_list)
-    start_time = time.time()
-    response = requests.post(
-        serving_endpoint,
-        headers=headers,
-        json={"dataframe_records": [{"Id": random_id}]},
-    )
-    end_time = time.time()
-    latency = end_time - start_time  # Calculate latency for this request
-    return response.status_code, latency
-
-
-# Measure total execution time
-total_start_time = time.time()
-latencies = []
-
-# Send requests concurrently
-with ThreadPoolExecutor(max_workers=100) as executor:
-    futures = [executor.submit(send_request) for _ in range(num_requests)]
-
-    for future in as_completed(futures):
-        status_code, latency = future.result()
-        latencies.append(latency)
-
-total_end_time = time.time()
-total_execution_time = total_end_time - total_start_time
-
-# Calculate the average latency
-average_latency = sum(latencies) / len(latencies)
-
-print("\nTotal execution time:", total_execution_time, "seconds")
-print("Average latency per request:", average_latency, "seconds")
