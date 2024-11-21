@@ -34,6 +34,9 @@ class FeatureServing:
         # Load training and test sets from Catalog
         train_set = spark.table(f"{self.catalog_name}.{self.schema_name}.train_set").toPandas()
         test_set = spark.table(f"{self.catalog_name}.{self.schema_name}.test_set").toPandas()
+        cols_to_drop = ["booking_status", "update_timestamp_utc"]
+        train_set = train_set.drop(columns=cols_to_drop)
+        test_set = test_set.drop(columns=cols_to_drop)
         self.df = pd.concat([train_set, test_set])
 
         # Initialize Databricks clients
@@ -54,12 +57,12 @@ class FeatureServing:
         """
         logger.info("Start creating offline feature table...")
         # Load the MLflow model for predictions
-        model = mlflow.sklearn.load_model(f"models:/{self.catalog_name}.{self.schema_name}.hotel_cancels")
+        model = mlflow.sklearn.load_model(f"models:/{self.catalog_name}.{self.schema_name}.hotel_cancels_model/1")
 
         # select features to be served, add predictions columns and ids
         preds_df: pd.DataFrame = self.df[self.lookup_features]
         preds_df[self.prediction] = model.predict(self.df)
-        preds_df["id"] = range(1, len(preds_df) + 1)
+        preds_df["id"] = [str(i) for i in range(1, len(preds_df) + 1)]  # Ensure IDs are strings
 
         preds_df = self.spark.createDataFrame(preds_df)
 
