@@ -15,6 +15,11 @@ logger = logger.Logger(__name__)
 
 
 class FeatureServing:
+    """
+    This will not work as some packages are not supported by VSCode.
+    The notebook with the same name should be used instead.
+    """
+
     def __init__(self, config: dict, spark: SparkSession) -> None:
         self.spark: SparkSession = spark
         self.logger = logger
