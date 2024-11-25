@@ -25,7 +25,7 @@ class Preprocessor:
         - preprocessed_df (pd.DataFrame): Processed Pandas DataFrame after transformations.
     """
 
-    def __init__(self, config: dict, spark: SparkSession, filepath: str) -> None:
+    def __init__(self, config: dict, spark: SparkSession, filepath: str | None, df: DataFrame | None) -> None:
         """
         Initialize the Preprocessor class with configuration, Spark session, and file path.
 
@@ -37,6 +37,7 @@ class Preprocessor:
         self.config: dict = config
         self.sparksession: SparkSession = spark
         self.filepath: str = filepath
+        self.df: DataFrame = df
         self.logger = logger
         self.raw_df: DataFrame = None
         self.preprocessed_df: pd.DataFrame = None
@@ -73,7 +74,8 @@ class Preprocessor:
             - Cleaning column names (removing prefixes and invalid characters)
 
         Returns:
-            - pd.DataFrame: The preprocessed Pandas DataFrame.
+            - pd.DataFrame: The preprocessed Pandas DataFrame.log.info(f"{affected_rows_test} new rows were added to test set.")
+
         """
         self.logger.info("Data cleaning and preprocessing...")
 
@@ -189,7 +191,15 @@ class Preprocessor:
         This method loads the data, cleans and preprocesses it, splits it into train and
         test sets, and finally saves the datasets to Unity Catalog.
         """
-        self.__load_data()
+
+        if self.df is not None:
+            if self.filepath is not None:
+                logger.error("Provide either filepath of dataframe.")
+                return
+            else:
+                self.raw_df = self.df
+        elif self.filepath is not None:
+            self.__load_data()
         self.__clean_and_preprocess_data()
         train_set, test_set = self.__split_data()
         self.__save_to_catalog(train_set, test_set)
