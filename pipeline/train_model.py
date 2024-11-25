@@ -51,8 +51,6 @@ parser.add_argument(
 
 args = parser.parse_args()
 root_path = args.root_path
-git_sha = args.git_sha
-job_run_id = args.job_run_id
 
 log.info("Loading configuration...")
 
