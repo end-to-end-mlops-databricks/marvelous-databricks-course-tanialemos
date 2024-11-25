@@ -7,7 +7,7 @@ from databricks.sdk.service.catalog import (
     OnlineTableSpecTriggeredSchedulingPolicy,
 )
 from databricks.sdk.service.serving import EndpointCoreConfigInput, ServedEntityInput
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 
 from . import logger
 
@@ -33,8 +33,8 @@ class FeatureServing:
         self.prediction = config["prediction"]
 
         # Define table names
-        self.feature_table_name = f"{self.catalog_name}.{self.schema_name}.hotel_cancels_preds"
-        self.online_table_name = f"{self.catalog_name}.{self.schema_name}.hotel_cancels_preds_online"
+        self.feature_table_name = f"{self.catalog_name}.{self.schema_name}.{config["feature_table_name"]}"
+        self.online_table_name = f"{self.catalog_name}.{self.schema_name}.{config["online_table_name"]}"
 
         # Load training and test sets from Catalog
         train_set = spark.table(f"{self.catalog_name}.{self.schema_name}.train_set").toPandas()
@@ -51,7 +51,22 @@ class FeatureServing:
         # Set the MLflow registry URI
         mlflow.set_registry_uri("databricks-uc")
 
-    def __create_feature_table(self) -> None:
+    def __load_model_and_predict(self, model_version) -> DataFrame:
+        # Load the MLflow model for predictions
+        model = mlflow.sklearn.load_model(
+            f"models:/{self.catalog_name}.{self.schema_name}.hotel_cancels_model/{model_version}"
+        )
+
+        # select features to be served, add predictions columns and ids
+        preds_df: pd.DataFrame = self.df[self.lookup_features]
+        preds_df[self.prediction] = model.predict(self.df)
+        preds_df["id"] = [str(i) for i in range(1, len(preds_df) + 1)]  # Ensure IDs are strings
+
+        preds_df = self.spark.createDataFrame(preds_df)
+
+        return preds_df
+
+    def __create_feature_table(self, model_version=1) -> None:
         """
         Creates an offline feature table in Databricks.
 
@@ -61,15 +76,8 @@ class FeatureServing:
         - Enables Change Data Feed for the table.
         """
         logger.info("Start creating offline feature table...")
-        # Load the MLflow model for predictions
-        model = mlflow.sklearn.load_model(f"models:/{self.catalog_name}.{self.schema_name}.hotel_cancels_model/1")
 
-        # select features to be served, add predictions columns and ids
-        preds_df: pd.DataFrame = self.df[self.lookup_features]
-        preds_df[self.prediction] = model.predict(self.df)
-        preds_df["id"] = [str(i) for i in range(1, len(preds_df) + 1)]  # Ensure IDs are strings
-
-        preds_df = self.spark.createDataFrame(preds_df)
+        preds_df = self.__load_model_and_predict(model_version=model_version)
 
         # Create the feature table in Databricks
         self.fe.create_table(
@@ -142,3 +150,19 @@ class FeatureServing:
         self.__create_feature_table()
         self.__create_online_feature_table()
         self.__create_serving_endpoint()
+
+    def overwrite_feature_table(self, model_version) -> None:
+        # To overwrite a table, drop and recreate it.
+        self.fe.drop_table(self.feature_table_name)
+        self.__create_feature_table(model_version)
+
+    def update_feature_table(self) -> None:
+        serving_endpoint = self.workspace.serving_endpoints.get("hotel-cancels-feature-serving")
+        model_version = serving_endpoint.config.served_models[0].model_version
+        preds_df = self.__load_model_and_predict(model_version)
+
+        self.fe.write_table(
+            name=self.feature_table_name,
+            df=preds_df,
+            mode="merge",
+        )

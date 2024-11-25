@@ -145,7 +145,7 @@ if new_accuracy > old_accuracy:
     )
 
     log.info("New model registered with version:", model_version.version)
-    dbutils.jobs.taskValues.set(key="model_version", value=model_version.version)
+    dbutils.jobs.taskValues.set(key="new_model_version", value=model_version.version)
     dbutils.jobs.taskValues.set(key="model_update", value=1)
 else:
     log.info("Old model is better based on accuracy.")

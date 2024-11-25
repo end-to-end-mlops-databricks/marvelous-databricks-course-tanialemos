@@ -39,3 +39,6 @@ lookup_features:
 prediction: predicted_cancel
 
 serving_endpoint_name: "hotel-cancels-feature-serving"
+
+feature_table_name: "hotel_cancels_preds"
+online_table_name: "hotel_cancels_preds_online"
