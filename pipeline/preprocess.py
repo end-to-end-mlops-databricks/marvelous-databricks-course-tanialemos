@@ -1,3 +1,13 @@
+"""
+This script handles data ingestion for a hotel booking cancellation prediction system.
+
+Key functionality:
+1. Load source dataset and retrieve recent records with recent timestamps.
+2. Split new records into train and test sets.
+3. Append new train and test records to existing train and test Delta Tables.
+5. Set a task value indicating whether new data was processed.
+"""
+
 import argparse
 
 import yaml
