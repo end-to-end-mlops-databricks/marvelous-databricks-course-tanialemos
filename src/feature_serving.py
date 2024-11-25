@@ -153,10 +153,12 @@ class FeatureServing:
 
     def overwrite_feature_table(self, model_version) -> None:
         # To overwrite a table, drop and recreate it.
+        logger.info("Overwriting feature table...")
         self.fe.drop_table(self.feature_table_name)
         self.__create_feature_table(model_version)
 
     def update_feature_table(self) -> None:
+        logger.info("Updating feature table...")
         serving_endpoint = self.workspace.serving_endpoints.get("hotel-cancels-feature-serving")
         model_version = serving_endpoint.config.served_models[0].model_version
         preds_df = self.__load_model_and_predict(model_version)
