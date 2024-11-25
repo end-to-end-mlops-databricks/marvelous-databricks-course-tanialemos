@@ -1,3 +1,5 @@
+from argparse import Namespace
+
 import git
 import mlflow
 import pandas as pd
@@ -12,10 +14,11 @@ logger = logger.Logger(__name__)
 
 
 class ModelTraining:
-    def __init__(self, config: dict, spark: SparkSession) -> None:
+    def __init__(self, config: dict, spark: SparkSession, args: Namespace) -> None:
         self.config: dict = config
         self.sparksession: SparkSession = spark
         self.logger = logger
+        self.args = args
         self.train_set_spark: DataFrame = None
         self.X_train: pd.DataFrame = None
         self.X_test: pd.DataFrame = None
@@ -53,7 +56,7 @@ class ModelTraining:
         self.X_test = test_set.drop(columns=["update_timestamp_utc", self.config["target"]])
         self.y_test = test_set[self.config["target"]]
 
-    def train_and_log_model(self) -> None:
+    def train_and_log_model(self) -> str:
         """
         Train logistic regression models with different solvers and log results to MLflow.
 
@@ -70,17 +73,20 @@ class ModelTraining:
         Raises:
             Exception: Captures and logs any errors encountered during model training or logging.
         """
+
+        git_sha = self.args.git_sha
+        job_run_id = self.args.job_run_id
+
         self.__load_and_split_data()
 
-        repo_info = self.__get_repo_info()
-        git_sha = repo_info["git_sha"]
-        current_branch = repo_info["branch"]
-        solvers = ["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]
+        # solvers = ["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]
+        prefered_solver = "lbfgs"
 
         mlflow.set_tracking_uri("databricks")
-        mlflow.set_experiment(experiment_name="/Shared/hotel-cancels")  # ideally point to the repo name
+        mlflow.set_experiment(experiment_name=self.config["experiment_name"])  # ideally point to the repo name
 
-        for solver in solvers:
+        # for solver in solvers:
+        for solver in prefered_solver:
             params = {
                 "solver": solver,
                 "max_iter": 500,
@@ -90,9 +96,11 @@ class ModelTraining:
             logger.info(f"Start model training with params: {params}")
 
             # Start an MLflow run
-            with mlflow.start_run(tags={"git_sha": f"{git_sha}", "branch": f"{current_branch}"}):
+            with mlflow.start_run(
+                tags={"git_sha": f"{git_sha}", "branch": "week5", "job_run_id": f"{job_run_id}"}
+            ) as run:
                 try:
-                    # run_id = run.info.run_id
+                    run_id = run.info.run_id
 
                     # train and predict
                     logger.info("Start model fit and predict...")
@@ -129,10 +137,14 @@ class ModelTraining:
                         artifact_path=f"lr-hotel-cancels-{solver}",
                         signature=signature,
                     )
+
+                    model_uri = f"runs:/{run_id}/lr-hotel-cancels-{solver}"
+
                 except Exception as e:
                     # Log failure for the current solver
                     mlflow.log_param("error", str(e))
                     logger.error(f"Solver {solver} failed with error: {e}")
+        return model_uri
 
     def register_model(self, run_id: str, artifact_path: str) -> None:
         """

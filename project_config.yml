@@ -26,6 +26,9 @@ target: booking_status
 
 test_size: 0.2
 
+# model training
+experiment_name: "/Shared/hotel-cancels"
+
 # model serving
 lookup_features:
   - "no_of_adults"
