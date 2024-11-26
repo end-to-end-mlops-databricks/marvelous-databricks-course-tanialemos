@@ -16,7 +16,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from pyspark.sql.functions import max as spark_max
 
-from src import logger
+from hotel_cancels import logger
 
 log = logger.Logger(__name__)
 

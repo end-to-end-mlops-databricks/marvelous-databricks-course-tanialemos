@@ -16,7 +16,7 @@ from databricks.sdk import WorkspaceClient
 from pyspark.dbutils import DBUtils
 from pyspark.sql import SparkSession
 
-from src import logger, model_training
+from hotel_cancels import logger, model_training
 
 log = logger.Logger(__name__)
 

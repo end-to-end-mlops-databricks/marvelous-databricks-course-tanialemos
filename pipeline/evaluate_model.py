@@ -19,7 +19,7 @@ from pyspark.sql import SparkSession
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 
-from src import logger
+from hotel_cancels import logger
 
 log = logger.Logger(__name__)
 

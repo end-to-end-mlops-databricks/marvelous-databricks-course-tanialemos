@@ -1,12 +1,14 @@
 import yaml
 from databricks.connect import DatabricksSession
 
-from src import feature_serving, logger
+from src.hotel_cancels import feature_serving, logger
 
 log = logger.Logger(__name__)
 
+
 # Load configuration
 log.info("Loading configuration...")
+
 
 with open("project_config.yml", "r") as file:
     config = yaml.safe_load(file)
@@ -50,6 +52,7 @@ model_training.register_model("eae6c929409544788c337eeea5d2b3c1", "lr-hotel-canc
 
 log.info("Model registration finished")
 """
+
 # Deploy feature serving endpoint
 log.info("Start deploying feature serving endpoint...")
 

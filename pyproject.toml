@@ -26,6 +26,15 @@ dev = ["databricks-connect>=15.4.1, <16",
        "ipykernel>=6.29.5, <7",
        "pip>=24.2"]
 
+[build-system]
+requires = [
+  "setuptools>=72.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where =["src"]
+include = ["hotel_cancels*"]
+
 [tool.ruff]
 line-length = 120
 select = [

@@ -5,7 +5,7 @@ from databricks.sdk import WorkspaceClient
 from pyspark.dbutils import DBUtils
 from pyspark.sql import SparkSession
 
-from src import feature_serving, logger
+from hotel_cancels import feature_serving, logger
 
 log = logger.Logger(__name__)
 

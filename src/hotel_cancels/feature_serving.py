@@ -33,8 +33,10 @@ class FeatureServing:
         self.prediction = config["prediction"]
 
         # Define table names
-        self.feature_table_name = f"{self.catalog_name}.{self.schema_name}.{config["feature_table_name"]}"
-        self.online_table_name = f"{self.catalog_name}.{self.schema_name}.{config["online_table_name"]}"
+        feature_table_name = config["feature_table_name"]
+        online_table_name = config["online_table_name"]
+        self.feature_table_name = f"{self.catalog_name}.{self.schema_name}.{feature_table_name}"
+        self.online_table_name = f"{self.catalog_name}.{self.schema_name}.{online_table_name}"
 
         # Load training and test sets from Catalog
         train_set = spark.table(f"{self.catalog_name}.{self.schema_name}.train_set").toPandas()
